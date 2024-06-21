@@ -1,0 +1,162 @@
+# Documentation: https://taskfile.dev/
+
+version: "3"
+
+tasks:
+  # Linting Tasks
+  lint::black:
+    desc: "Check code formatting with Black"
+    cmds:
+    - poetry run black --check .
+
+  lint::isort:
+    desc: "Check import order with isort"
+    cmds:
+    - poetry run isort --check .
+
+  lint::ruff:
+    desc: "Lint code with Ruff"
+    cmds:
+    - poetry run ruff check .
+
+  lint:
+    desc: "Run all linting tasks"
+    deps:
+    - lint::black
+    - lint::isort
+    - lint::ruff
+
+  # Formatting Tasks
+  format::black:
+    desc: "Format code with Black"
+    cmds:
+    - poetry run black .
+
+  format::isort:
+    desc: "Format imports with isort"
+    cmds:
+    - poetry run isort .
+
+  format::ruff:
+    desc: "Fix linting issues with Ruff"
+    cmds:
+    - poetry run ruff format .
+
+  format:
+    desc: "Run all formatting tasks"
+    deps:
+    - task: format::black
+    - task: format::isort
+    - task: format::ruff
+    aliases:
+    - "fmt"
+
+  # Environment Setup
+  setup::poetry:
+    desc: "Install dependencies with Poetry"
+    cmds:
+    - poetry install
+
+  setup::mockoon:
+    desc: "Start mock API server"
+    cmds:
+    - mockoon-cli start --data ./openapi/infrastructure-api.yml
+
+  setup:
+    desc: "Set up development environment"
+    deps:
+    - setup::poetry
+    - setup::mockoon
+
+  # Build Tasks
+  build::image:
+    desc: "Build Docker image"
+    cmds:
+    - docker build -t frobnicate -f containers/Containerfile .
+    # only run if there are any changes to code, Dockerfile, or poetry.lock
+    sources:
+    - frobnicate/**/*.py
+    - containers/poetry-build.Containerfile
+    - pyproject.toml
+    - poetry.lock
+
+  build::python:
+    desc: "Build Python wheels and sdist"
+    cmds:
+    - poetry build
+    sources:
+    - frobnicate/**/*.py
+    - pyproject.toml
+    - poetry.lock
+    generates:
+    - dist/frobnicate-*.whl
+    - dist/frobnicate-*.tar.gz
+
+  build::pex:
+    desc: "Build PEX binary"
+    sources:
+    - frobnicate/**/*.py
+    - pyproject.toml
+    - poetry.lock
+    cmds:
+    - poetry run pex . -m frobnicate.main:app --sh-boot --compile --venv -v -o dist/frobnicate.pex
+    generates:
+    - dist/frobnicate.pex
+
+  build:
+    desc: "Run all build tasks"
+    deps:
+    - build::image
+    - build::python
+    - build::pex
+
+  # Run Docker Image
+  run::image:
+    desc: "Run Docker image for frobnicate"
+    cmds:
+    - docker run -it -v $(pwd)/out:/out --rm frobnicate bash
+
+  # Generate Documentation
+  gen::command-list:
+    desc: "Generate command list for autosuggest"
+    cmds:
+    - poetry run python scripts/gen_command_list.py
+
+  gen::manual:
+    desc: "Generate MANUAL.md"
+    cmds:
+    - poetry run typer frobnicate.main utils docs --output docs/MANUAL.md --name frobnicate
+
+  gen:
+    desc: "Run all generation tasks"
+    deps:
+    - gen::command-list
+    - gen::manual
+
+  # Testing Tasks
+  test:
+    desc: "Run tests with pytest"
+    cmds:
+    - poetry run pytest --cov-report term --cov-report xml:coverage.xml --junitxml=report.xml --cov=frobnicate
+
+  # Clean Task
+  clean:
+    desc: "Clean build artifacts"
+    cmds:
+    - poetry run pyclean .
+    - rm -rf dist/
+
+  # Profiling Tasks
+  profile::run:
+    desc: "Run profiling in Docker"
+    deps:
+    - build::image
+    cmds:
+    - docker run -it -v $(pwd)/out:/out --rm frobnicate bash
+
+  profile:
+    desc: "Profile frobnicate with py-spy"
+    deps:
+    - build::image
+    cmds:
+    - docker run -it -v $(pwd)/out:/out --rm frobnicate sh -c "/opt/poetry/bin/poetry install; frobnicate; /opt/poetry/bin/poetry run py-spy record -r 1000 -f speedscope -o /out/profile.svg -- frobnicate"
