@@ -1,0 +1,126 @@
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+name: release-please
+
+env:
+  GITHUB_TOKEN: ${{ secrets.ORG_TOKEN }}
+  HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.ORG_TOKEN }}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-22.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      major: ${{ steps.release.outputs.major }}
+      minor: ${{ steps.release.outputs.minor }}
+      patch: ${{ steps.release.outputs.patch }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.ORG_TOKEN }}
+          release-type: python
+          # Setting target-branch allows us to track multiple release branches (should we need to maintain a 1.x or similar branch.)
+          target-branch: ${{ github.ref_name }}
+
+  build-pex:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install Dependencies
+        if: ${{ steps.cached-poetry-dependencies.outputs.cache-hit != 'true' }}
+        run: poetry install --no-interaction --no-root
+
+      - name: Install project
+        run: poetry install --no-interaction
+
+      - name: Build project
+        run: poetry build
+
+      - name: Build PEX
+        run: poetry run pex . -m frobnicate.main:app -o frobnicate.pex --sh-boot --compile --venv -v -o dist/frobnicate_${{ needs.release-please.outputs.tag_name }}_${{ matrix.os }}.pex
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frobnicate-pex-${{ matrix.os }}
+          path: dist/frobnicate_${{ needs.release-please.outputs.tag_name }}_${{ matrix.os }}.pex
+
+      - name: Upload Release Artifact to GitHub
+        run: gh release upload --clobber ${{ needs.release-please.outputs.tag_name }} dist/*
+
+  bump-homebrew-formula:
+    needs: [release-please, build-pex]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+        with:
+          token: ${{ secrets.ORG_TOKEN }}
+
+      - name: Set Git Credentials
+        run: echo "https://${{ secrets.ORG_TOKEN }}:@github.com" > ~/.git-credentials && git config --global credential.helper store
+
+      - name: Set Git User
+        run: git config --global user.email "github-bot@loewenthal.net" && git config --global user.name "frobotnicator"
+
+      - name: Cache Homebrew Bundler RubyGems
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.set-up-homebrew.outputs.gems-path }}
+          key: ${{ runner.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
+          restore-keys: ${{ runner.os }}-rubygems-
+
+      - name: Tap matanyall/tap
+        run: brew tap matanyall/tap
+
+      - name: Download MacOS Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: frobnicate-pex-macos-14
+
+      - name: Update Homebrew Formula
+        run: >
+          brew bump-formula-pr matanyall/tap/frobnicate --no-audit --no-fork --no-browse --force -v
+          --url $(gh release view ${{ needs.release-please.outputs.tag_name }} -q '.assets[] | .url | select(.|test("macos"))' --json assets)
+          --sha $(shasum -a 256 frobnicate_*.pex | cut -d ' ' -f 1)
+          --version ${{ needs.release-please.outputs.major }}.${{ needs.release-please.outputs.minor }}.${{ needs.release-please.outputs.patch }}
