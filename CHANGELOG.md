@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/matanyall/frobnicate/compare/v0.1.0...v0.2.0) (2024-06-21)
+
+
+### Features
+
+* registration ([5442bff](https://github.com/matanyall/frobnicate/commit/5442bff582866f99f94e5a60205e9f93a1ebd910))
+
 ## 0.1.0 (2024-06-21)
 
 

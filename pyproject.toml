@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "frobnicate"
-version = "0.1.0"
+version = "0.2.0"
 description = ""
 authors = ["Matanya Loewenthal <matanya@loewenthal.net>"]
 readme = "README.md"
