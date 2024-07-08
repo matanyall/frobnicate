@@ -306,13 +306,13 @@ files = [
 
 [[package]]
 name = "pex"
-version = "2.4.0"
+version = "2.8.0"
 description = "The PEX packaging toolchain."
 optional = false
-python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,<3.13,>=2.7"
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,<3.14,>=2.7"
 files = [
-    {file = "pex-2.4.0-py2.py3-none-any.whl", hash = "sha256:c5240d95d770f566f3db35c6d1fff063340605cb950dcd2fcdae3d9bc566d6b3"},
-    {file = "pex-2.4.0.tar.gz", hash = "sha256:587e9a92524ff169355e0c542de74cfeb22de97580579babf61380b5aed3b03e"},
+    {file = "pex-2.8.0-py2.py3-none-any.whl", hash = "sha256:648520e52ecb312cef96e82843b13110d6929358ebea6490fc18b1f74eacb814"},
+    {file = "pex-2.8.0.tar.gz", hash = "sha256:1fd93a9016eba9349bfc79e8134a939cce26b1d2837aafed9a76f7304c58983a"},
 ]
 
 [package.extras]
